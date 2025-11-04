@@ -5,8 +5,8 @@ const char* ssid = "Xiaomi_ANNA";
 const char* password = "23263483";
 
 // const char* radioUrl = "http://direct.fipradio.fr/live/fip-lofi.mp3"; 
- const char* radioUrl = "http://icecast.omroep.nl:80/3fm-bb-mp3";
-// const char* radioUrl = "http://direct.fipradio.fr/live/fip-midfi.mp3";
+// const char* radioUrl = "http://icecast.omroep.nl:80/3fm-bb-mp3";
+const char* radioUrl = "http://direct.fipradio.fr/live/fip-midfi.mp3";
 
 
 #define I2S_DOUT      22  // DIN на PCM5102A
@@ -34,7 +34,7 @@ void setup() {
   audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
   
   audio.setVolume(21); 
-  audio.setTone(0, 0, 0); 
+  audio.setTone(10, 0, 0); 
   
   audio.setConnectionTimeout(10000, 30000); 
   audio.setBufsize(-1, 12288);
