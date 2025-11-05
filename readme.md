@@ -8,3 +8,9 @@ LCK	WS (GPIO25)
 FMT	GND
 XMT	3V
 SCK (GPIO13)
+
+# Склад системи 
+* ESP-32
+* PAM-8403
+* PCM5102A
+* EC11 енкодер
