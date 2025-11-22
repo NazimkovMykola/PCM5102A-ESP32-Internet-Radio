@@ -44,9 +44,10 @@ const char *radioStations[] = {
 
 const int numStations = sizeof(radioStations) / sizeof(radioStations[0]);
 int currentStation = 0;
+int previewStation = 0;
 String currentTitle = ""; 
 
-int8_t toneLow = 10; 
+int8_t toneLow = 5; 
 int8_t toneMid = 0;  
 int8_t toneHigh = 0; 
 
@@ -68,9 +69,9 @@ volatile bool encoderChanged = false;
 int lastEncoderPos = 0;
 int lastCLK = HIGH;
 
-unsigned long lastButtonPress = 0;
-unsigned long lastStationChangeTime = 0;
-bool pendingStationChange = false;
+unsigned long buttonDownTime = 0;
+bool buttonActive = false;
+const unsigned long LONG_PRESS_TIME = 800;
 
 void IRAM_ATTR handleEncoder()
 {
@@ -99,7 +100,7 @@ void showSplashScreen() {
   display.setCursor(28, 35); 
   display.print("Mykola");
   display.display();
-  delay(3000); 
+  delay(2000); 
 }
 
 void drawBar(int value, int minVal, int maxVal)
@@ -136,33 +137,45 @@ void updateDisplay()
   {
     display.setCursor(0, 18);
     display.print("Station ");
-    display.print(currentStation + 1);
+    display.print(previewStation + 1);
     display.print("/");
-    display.println(numStations);
-    
+    display.print(numStations);
+
+    if (previewStation != currentStation) {
+       display.print(" *"); 
+    }
+
     display.setCursor(0, 32);
     
-    if(pendingStationChange) {
-         display.println("Selecting...");
-    } else {
+    if (previewStation != currentStation) {
+        String nextStationUrl = cleanURL(String(radioStations[previewStation]));
+        
+        if (nextStationUrl.length() > 21) {
+             display.println(nextStationUrl.substring(0, 21));
+             display.println(nextStationUrl.substring(21));
+        } else {
+             display.println(nextStationUrl);
+        }
+             
+        display.setCursor(20, 55);
+        display.setTextSize(1);
+        display.print("[ PRESS ]");
+    } 
+    else {
         String textToShow = currentTitle;
         
         if (textToShow.length() == 0 || textToShow == "Ready") {
            textToShow = cleanURL(String(radioStations[currentStation]));
         }
 
-        if (textToShow.length() > 42) 
-        {
+        if (textToShow.length() > 42) {
             display.println(textToShow.substring(0, 21));
             display.println(textToShow.substring(21, 42));
-        }
-        else if (textToShow.length() > 21) {
+        } else if (textToShow.length() > 21) {
              display.println(textToShow.substring(0, 21));
              display.println(textToShow.substring(21));
-        }
-        else
-        {
-            display.println(textToShow);
+        } else {
+             display.println(textToShow);
         }
     }
   }
@@ -171,20 +184,6 @@ void updateDisplay()
   else if (currentMode == 3) drawBar(toneHigh, -10, 6);
 
   display.display();
-}
-
-void changeStationIndex(int dir)
-{
-  int newStation = currentStation + dir;
-  if (newStation < 0) newStation = numStations - 1;
-  if (newStation >= numStations) newStation = 0;
-
-  currentStation = newStation;
-  currentTitle = cleanURL(String(radioStations[currentStation])); 
-  updateDisplay();
-  
-  pendingStationChange = true;
-  lastStationChangeTime = millis();
 }
 
 void applyTone()
@@ -230,7 +229,9 @@ void setup()
   audio.setTone(toneLow, toneMid, toneHigh);
   audio.setConnectionTimeout(5000, 5000); 
 
+  previewStation = currentStation;
   currentTitle = cleanURL(String(radioStations[currentStation]));
+  
   audio.connecttohost(radioStations[currentStation]);
   updateDisplay();
 }
@@ -239,14 +240,38 @@ void loop()
 {
   audio.loop();
 
-  if (digitalRead(ENCODER_SW) == LOW)
-  {
-    if (millis() - lastButtonPress > 300)
-    {
+  int btnState = digitalRead(ENCODER_SW);
+
+  if (btnState == LOW && !buttonActive) {
+    buttonActive = true;
+    buttonDownTime = millis();
+  }
+
+  if (btnState == HIGH && buttonActive) {
+    buttonActive = false;
+    unsigned long duration = millis() - buttonDownTime;
+
+    if (duration > LONG_PRESS_TIME) {
       currentMode++;
       if (currentMode > 3) currentMode = 0;
+      if (currentMode == 0) previewStation = currentStation;
       updateDisplay();
-      lastButtonPress = millis();
+    } 
+    else if (duration > 50) { 
+      if (currentMode == 0) {
+         if (previewStation != currentStation) {
+            currentStation = previewStation;
+            currentTitle = "Connecting...";
+            updateDisplay();
+            audio.connecttohost(radioStations[currentStation]);
+         }
+      } 
+      else {
+         currentMode++;
+         if (currentMode > 3) currentMode = 0;
+         if (currentMode == 0) previewStation = currentStation;
+         updateDisplay();
+      }
     }
   }
 
@@ -255,7 +280,7 @@ void loop()
     encoderChanged = false;
     int diff = encoderPos - lastEncoderPos;
     int absDiff = abs(diff);
-    int threshold = (currentMode == 0) ? 4 : 2;
+    int threshold = (currentMode == 0) ? 2 : 2; 
 
     if (absDiff >= threshold)
     {
@@ -263,7 +288,11 @@ void loop()
 
       if (currentMode == 0)
       {
-        changeStationIndex(direction);
+        previewStation += direction;
+        if (previewStation < 0) previewStation = numStations - 1;
+        if (previewStation >= numStations) previewStation = 0;
+        
+        updateDisplay(); 
       }
       else if (currentMode == 1) 
       {
@@ -289,14 +318,6 @@ void loop()
       lastEncoderPos = encoderPos;
     }
   }
-
-  if (pendingStationChange && (millis() - lastStationChangeTime > 600)) 
-  {
-      pendingStationChange = false;
-      currentTitle = cleanURL(String(radioStations[currentStation]));
-      updateDisplay();
-      audio.connecttohost(radioStations[currentStation]);
-  }
 }
 
 void audio_info(const char *info) {
@@ -305,15 +326,15 @@ void audio_info(const char *info) {
 
     if (sInfo.indexOf("404") >= 0) {
         currentTitle = "Error: 404 Not Found";
-        if (currentMode == 0) updateDisplay();
+        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
     }
     else if (sInfo.indexOf("failed") >= 0 || sInfo.indexOf("refused") >= 0) {
         currentTitle = "Connection Failed";
-        if (currentMode == 0) updateDisplay();
+        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
     }
     else if (sInfo.indexOf("format") >= 0 && sInfo.indexOf("error") >= 0) {
         currentTitle = "Format Error";
-        if (currentMode == 0) updateDisplay();
+        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
     }
 }
 
@@ -323,7 +344,7 @@ void audio_showstreamtitle(const char *info)
   sInfo.trim();
   if(sInfo.length() > 0) {
     currentTitle = sInfo;
-    if (currentMode == 0) updateDisplay();
+    if (currentMode == 0 && previewStation == currentStation) updateDisplay();
   }
 }
 
@@ -331,14 +352,14 @@ void audio_showstation(const char *info) {
     String sInfo = String(info);
     if (sInfo.length() > 0 && (currentTitle.indexOf("http") >= 0 || currentTitle.indexOf("Error") >= 0 || currentTitle.length() == 0)) {
         currentTitle = sInfo;
-        if (currentMode == 0) updateDisplay();
+        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
     }
 }
 
 void audio_error(const char *info) {
     Serial.print("error; "); Serial.println(info);
     currentTitle = "Stream Error";
-    if (currentMode == 0) updateDisplay();
+    if (currentMode == 0 && previewStation == currentStation) updateDisplay();
 }
 
 void audio_id3data(const char *info){}
