@@ -49,11 +49,11 @@ const char *radioStations[] = {
 
 const int numStations = sizeof(radioStations) / sizeof(radioStations[0]);
 int currentStation = 0;
-String currentTitle = "Ready";
+String currentTitle = "";
 
-int8_t toneLow = 10; // Bass: від -10 до +6
-int8_t toneMid = 0;  // Mid: від -10 до +6
-int8_t toneHigh = 0; // Treble: від -10 до +6
+int8_t toneLow = 10; 
+int8_t toneMid = 0;  
+int8_t toneHigh = 0; 
 
 int currentMode = 0;
 const char *modeNames[] = {"STATION", "BASS (Low)", "MID TONE", "TREBLE (High)"};
@@ -66,6 +66,7 @@ const char *modeNames[] = {"STATION", "BASS (Low)", "MID TONE", "TREBLE (High)"}
 #define ENCODER_CLK 12
 #define ENCODER_DT 14
 #define ENCODER_SW 27
+
 Audio audio;
 
 volatile int encoderPos = 0;
@@ -74,6 +75,9 @@ int lastEncoderPos = 0;
 int lastCLK = HIGH;
 
 unsigned long lastButtonPress = 0;
+
+unsigned long lastStationChangeTime = 0;
+bool pendingStationChange = false;
 
 void IRAM_ATTR handleEncoder()
 {
@@ -91,19 +95,38 @@ void IRAM_ATTR handleEncoder()
   lastCLK = clkState;
 }
 
+void showSplashScreen() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setCursor(34, 4); 
+  display.print("Powered by");
+  display.drawLine(0, 15, 128, 15, SSD1306_WHITE); 
+  display.setTextSize(2);
+  display.setCursor(28, 35); 
+  display.print("Mykola");
+
+  display.display();
+  delay(3000);
+}
+
 void drawBar(int value, int minVal, int maxVal)
 {
   display.drawRect(10, 35, 108, 12, SSD1306_WHITE);
-
   int width = map(value, minVal, maxVal, 0, 104);
-  if (width < 0)
-    width = 0;
-  if (width > 104)
-    width = 104;
+  if (width < 0) width = 0;
+  if (width > 104) width = 104;
   display.fillRect(12, 37, width, 8, SSD1306_WHITE);
   display.setCursor(55, 52);
   display.print(value);
   display.print(" dB");
+}
+
+String cleanURL(String url) {
+  url.replace("http://", "");
+  url.replace("https://", "");
+  url.replace("www.", "");
+  return url;
 }
 
 void updateDisplay()
@@ -116,6 +139,7 @@ void updateDisplay()
   display.print(modeNames[currentMode]);
 
   display.drawLine(0, 14, 128, 14, SSD1306_WHITE);
+  
   if (currentMode == 0)
   {
     display.setCursor(0, 18);
@@ -123,46 +147,53 @@ void updateDisplay()
     display.print(currentStation + 1);
     display.print("/");
     display.println(numStations);
+    
     display.setCursor(0, 32);
-    if (currentTitle.length() > 21)
-    {
-      display.println(currentTitle.substring(0, 21));
-      display.println(currentTitle.substring(21));
+    
+    if(pendingStationChange) {
+         display.println("Selecting...");
+    } else {
+        String textToShow = currentTitle;
+      
+        if (textToShow.length() == 0 || textToShow == "Ready") {
+           textToShow = cleanURL(String(radioStations[currentStation]));
+        }
+
+        if (textToShow.length() > 42) 
+        {
+            display.println(textToShow.substring(0, 21));
+            display.println(textToShow.substring(21, 42));
+        }
+        else if (textToShow.length() > 21) {
+             display.println(textToShow.substring(0, 21));
+             display.println(textToShow.substring(21));
+        }
+        else
+        {
+            display.println(textToShow);
+        }
     }
-    else
-    {
-      display.println(currentTitle);
-    }
   }
-  else if (currentMode == 1)
-  {
-    drawBar(toneLow, -10, 6);
-  }
-  else if (currentMode == 2)
-  {
-    drawBar(toneMid, -10, 6);
-  }
-  else if (currentMode == 3)
-  {
-    drawBar(toneHigh, -10, 6);
-  }
+  else if (currentMode == 1) drawBar(toneLow, -10, 6);
+  else if (currentMode == 2) drawBar(toneMid, -10, 6);
+  else if (currentMode == 3) drawBar(toneHigh, -10, 6);
 
   display.display();
 }
 
-void changeStation(int dir)
+void changeStationIndex(int dir)
 {
   int newStation = currentStation + dir;
-  if (newStation < 0)
-    newStation = numStations - 1;
-  if (newStation >= numStations)
-    newStation = 0;
+  if (newStation < 0) newStation = numStations - 1;
+  if (newStation >= numStations) newStation = 0;
 
   currentStation = newStation;
-  currentTitle = "Wait...";
+  currentTitle = cleanURL(String(radioStations[currentStation])); 
+  
   updateDisplay();
-
-  audio.stopSong();
+  
+  pendingStationChange = true;
+  lastStationChangeTime = millis();
 }
 
 void applyTone()
@@ -180,11 +211,10 @@ void setup()
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
   {
     Serial.println(F("SSD1306 fail"));
-    for (;;)
-      ;
+    for (;;);
   }
-  display.clearDisplay();
-  display.display();
+  
+  showSplashScreen();
 
   pinMode(ENCODER_CLK, INPUT_PULLUP);
   pinMode(ENCODER_DT, INPUT_PULLUP);
@@ -196,20 +226,20 @@ void setup()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
   display.println("Connecting WiFi...");
   display.display();
 
-  while (WiFi.status() != WL_CONNECTED)
-    delay(500);
+  while (WiFi.status() != WL_CONNECTED) delay(500);
 
   audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-  audio.setVolume(21);
+  audio.setVolume(12); 
   audio.setTone(toneLow, toneMid, toneHigh);
-  audio.setConnectionTimeout(10000, 30000);
+  audio.setConnectionTimeout(5000, 10000); 
 
+  currentTitle = cleanURL(String(radioStations[currentStation]));
   audio.connecttohost(radioStations[currentStation]);
   updateDisplay();
 }
@@ -223,8 +253,7 @@ void loop()
     if (millis() - lastButtonPress > 300)
     {
       currentMode++;
-      if (currentMode > 3)
-        currentMode = 0;
+      if (currentMode > 3) currentMode = 0;
       updateDisplay();
       lastButtonPress = millis();
     }
@@ -233,56 +262,64 @@ void loop()
   if (encoderChanged)
   {
     encoderChanged = false;
-
     int diff = encoderPos - lastEncoderPos;
     int absDiff = abs(diff);
-    int threshold = (currentMode == 0) ? 4 : 2;
+    int threshold = (currentMode == 0) ? 2 : 2;
+
     if (absDiff >= threshold)
     {
       int direction = (diff > 0) ? 1 : -1;
 
       if (currentMode == 0)
       {
-        changeStation(direction);
-        audio.connecttohost(radioStations[currentStation]);
+        changeStationIndex(direction);
       }
-      else if (currentMode == 1)
-      {
-        toneLow += direction;
-        if (toneLow > 6)
-          toneLow = 6;
-        if (toneLow < -10)
-          toneLow = -10;
+      else if (currentMode == 1) {
+        toneLow = constrain(toneLow + direction, -10, 6);
         applyTone();
       }
-      else if (currentMode == 2)
-      {
-        toneMid += direction;
-        if (toneMid > 6)
-          toneMid = 6;
-        if (toneMid < -10)
-          toneMid = -10;
+      else if (currentMode == 2) {
+        toneMid = constrain(toneMid + direction, -10, 6);
         applyTone();
       }
-      else if (currentMode == 3)
-      {
-        toneHigh += direction;
-        if (toneHigh > 6)
-          toneHigh = 6;
-        if (toneHigh < -10)
-          toneHigh = -10;
+      else if (currentMode == 3) {
+        toneHigh = constrain(toneHigh + direction, -10, 6);
         applyTone();
       }
-
       lastEncoderPos = encoderPos;
     }
   }
+
+  if (pendingStationChange && (millis() - lastStationChangeTime > 600)) 
+  {
+      pendingStationChange = false;
+      
+      currentTitle = cleanURL(String(radioStations[currentStation]));
+      updateDisplay();
+      
+      audio.connecttohost(radioStations[currentStation]);
+  }
 }
+
 
 void audio_showstreamtitle(const char *info)
 {
   String sInfo = String(info);
-  currentTitle = sInfo;
-  if (currentMode == 0)
-    updateDisplay();
+  sInfo.trim();
+  if(sInfo.length() > 0) {
+    currentTitle = sInfo;
+    if (currentMode == 0) updateDisplay();
+  }
 }
+
+void audio_showstation(const char *info) {
+    String sInfo = String(info);
+    if (sInfo.length() > 0 && (currentTitle.indexOf("http") >= 0 || currentTitle.length() == 0)) {
+        currentTitle = sInfo;
+        if (currentMode == 0) updateDisplay();
+    }
+}
+
+void audio_id3data(const char *info){}
+void audio_eof_mp3(const char *info){}
+void audio_bitrate(const char *info){}
