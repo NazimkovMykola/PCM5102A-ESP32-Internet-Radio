@@ -17,39 +17,34 @@ const char *password = "23263483";
 
 const char *radioStations[] = {
     "http://direct.fipradio.fr/live/fip-midfi.mp3",
-    "http://direct.fipradio.fr/live/fip-lofi.mp3",
     "http://icecast.omroep.nl:80/3fm-bb-mp3",
     "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service",
     "http://icecast.vrtcdn.be/stubru-high.mp3",
     "http://streams.radiobob.de/bob-live/mp3-192",
     "http://online.radioroks.ua/RadioROKS",
-    "http://radio.ukr.radio:8000/ur1-mp3",
-    "http://radio.ukr.radio:8000/ur2-mp3",
     "https://a9.asurahosting.com:7390/radio.mp3",
     "http://online.radiorelax.ua/RadioRelax",
     "http://online.melodiafm.ua/MelodiaFM",
-    "https://icecast.walmradio.com:8443/walm",
-    "https://icecast.walmradio.com:8443/classic",
     "https://icecast.walmradio.com:8443/jazz",
     "https://stream02.pcradio.biz/frank_sinatra-med",
-    "https://radio2.ukr.radio/ur3-mp3-m",
-    "https://radio2.ukr.radio/ur5-mp3", 
     "https://listen-gorgeousfm.sharp-stream.com/45_gorgeous_fm_128_mp3",
     "https://media-ssl.musicradio.com/Heart80s",
-    "https://stream.border-radio.it/radio.mp3",
     "https://blimp.streampunk.cc/_stream/blackout.mp3",
     "https://icecast.xtvmedia.pp.ua/radiowandafm_hq.mp3",
     "https://tunein-live-c.cdnstream1.com/4994_96_2.mp3",
     "https://cdn1.zetcast.net/stream",
     "https://rawlco.leanstream.co/CHUPFM",
     "https://shonanbeachfm.out.airtime.pro:8000/shonanbeachfm_a",
-    "https://ssl.geckohost.nz/proxy/john1212?mp=/stream",
-    "https://online.radioroks.ua/RadioROKS_Ukr"
+    "https://online.radioroks.ua/RadioROKS_Ukr",
+    "https://online.hitfm.ua/HitFM_Best",
+    "https://online.radiorelax.ua/RadioRelax_Cafe",
+    "https://s3.radio.co/sa3e464c40/listen",
+    "https://cast.brg.ua/business_main_public_mp3_hq"
 };
 
 const int numStations = sizeof(radioStations) / sizeof(radioStations[0]);
 int currentStation = 0;
-String currentTitle = "";
+String currentTitle = ""; 
 
 int8_t toneLow = 10; 
 int8_t toneMid = 0;  
@@ -58,7 +53,6 @@ int8_t toneHigh = 0;
 int currentMode = 0;
 const char *modeNames[] = {"STATION", "BASS (Low)", "MID TONE", "TREBLE (High)"};
 
-// --- Піни ---
 #define I2S_DOUT 22
 #define I2S_BCLK 26
 #define I2S_LRC 25
@@ -75,7 +69,6 @@ int lastEncoderPos = 0;
 int lastCLK = HIGH;
 
 unsigned long lastButtonPress = 0;
-
 unsigned long lastStationChangeTime = 0;
 bool pendingStationChange = false;
 
@@ -105,9 +98,8 @@ void showSplashScreen() {
   display.setTextSize(2);
   display.setCursor(28, 35); 
   display.print("Mykola");
-
   display.display();
-  delay(3000);
+  delay(3000); 
 }
 
 void drawBar(int value, int minVal, int maxVal)
@@ -154,7 +146,7 @@ void updateDisplay()
          display.println("Selecting...");
     } else {
         String textToShow = currentTitle;
-      
+        
         if (textToShow.length() == 0 || textToShow == "Ready") {
            textToShow = cleanURL(String(radioStations[currentStation]));
         }
@@ -189,7 +181,6 @@ void changeStationIndex(int dir)
 
   currentStation = newStation;
   currentTitle = cleanURL(String(radioStations[currentStation])); 
-  
   updateDisplay();
   
   pendingStationChange = true;
@@ -237,7 +228,7 @@ void setup()
   audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
   audio.setVolume(12); 
   audio.setTone(toneLow, toneMid, toneHigh);
-  audio.setConnectionTimeout(5000, 10000); 
+  audio.setConnectionTimeout(5000, 5000); 
 
   currentTitle = cleanURL(String(radioStations[currentStation]));
   audio.connecttohost(radioStations[currentStation]);
@@ -264,7 +255,7 @@ void loop()
     encoderChanged = false;
     int diff = encoderPos - lastEncoderPos;
     int absDiff = abs(diff);
-    int threshold = (currentMode == 0) ? 2 : 2;
+    int threshold = (currentMode == 0) ? 4 : 2;
 
     if (absDiff >= threshold)
     {
@@ -274,16 +265,25 @@ void loop()
       {
         changeStationIndex(direction);
       }
-      else if (currentMode == 1) {
-        toneLow = constrain(toneLow + direction, -10, 6);
+      else if (currentMode == 1) 
+      {
+        toneLow += direction;
+        if (toneLow > 6) toneLow = 6;
+        if (toneLow < -10) toneLow = -10;
         applyTone();
       }
-      else if (currentMode == 2) {
-        toneMid = constrain(toneMid + direction, -10, 6);
+      else if (currentMode == 2) 
+      {
+        toneMid += direction;
+        if (toneMid > 6) toneMid = 6;
+        if (toneMid < -10) toneMid = -10;
         applyTone();
       }
-      else if (currentMode == 3) {
-        toneHigh = constrain(toneHigh + direction, -10, 6);
+      else if (currentMode == 3) 
+      {
+        toneHigh += direction;
+        if (toneHigh > 6) toneHigh = 6;
+        if (toneHigh < -10) toneHigh = -10;
         applyTone();
       }
       lastEncoderPos = encoderPos;
@@ -293,14 +293,29 @@ void loop()
   if (pendingStationChange && (millis() - lastStationChangeTime > 600)) 
   {
       pendingStationChange = false;
-      
       currentTitle = cleanURL(String(radioStations[currentStation]));
       updateDisplay();
-      
       audio.connecttohost(radioStations[currentStation]);
   }
 }
 
+void audio_info(const char *info) {
+    Serial.print("info; "); Serial.println(info);
+    String sInfo = String(info);
+
+    if (sInfo.indexOf("404") >= 0) {
+        currentTitle = "Error: 404 Not Found";
+        if (currentMode == 0) updateDisplay();
+    }
+    else if (sInfo.indexOf("failed") >= 0 || sInfo.indexOf("refused") >= 0) {
+        currentTitle = "Connection Failed";
+        if (currentMode == 0) updateDisplay();
+    }
+    else if (sInfo.indexOf("format") >= 0 && sInfo.indexOf("error") >= 0) {
+        currentTitle = "Format Error";
+        if (currentMode == 0) updateDisplay();
+    }
+}
 
 void audio_showstreamtitle(const char *info)
 {
@@ -314,10 +329,16 @@ void audio_showstreamtitle(const char *info)
 
 void audio_showstation(const char *info) {
     String sInfo = String(info);
-    if (sInfo.length() > 0 && (currentTitle.indexOf("http") >= 0 || currentTitle.length() == 0)) {
+    if (sInfo.length() > 0 && (currentTitle.indexOf("http") >= 0 || currentTitle.indexOf("Error") >= 0 || currentTitle.length() == 0)) {
         currentTitle = sInfo;
         if (currentMode == 0) updateDisplay();
     }
+}
+
+void audio_error(const char *info) {
+    Serial.print("error; "); Serial.println(info);
+    currentTitle = "Stream Error";
+    if (currentMode == 0) updateDisplay();
 }
 
 void audio_id3data(const char *info){}
