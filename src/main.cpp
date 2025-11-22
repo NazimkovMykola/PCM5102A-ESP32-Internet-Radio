@@ -15,39 +15,45 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 const char *ssid = "Xiaomi_ANNA";
 const char *password = "23263483";
 
-const char *radioStations[] = {
-    "http://direct.fipradio.fr/live/fip-midfi.mp3",
-    "http://icecast.omroep.nl:80/3fm-bb-mp3",
-    "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service",
-    "http://icecast.vrtcdn.be/stubru-high.mp3",
-    "http://streams.radiobob.de/bob-live/mp3-192",
-    "http://online.radioroks.ua/RadioROKS",
-    "https://a9.asurahosting.com:7390/radio.mp3",
-    "http://online.radiorelax.ua/RadioRelax",
-    "http://online.melodiafm.ua/MelodiaFM",
-    "https://icecast.walmradio.com:8443/jazz",
-    "https://stream02.pcradio.biz/frank_sinatra-med",
-    "https://listen-gorgeousfm.sharp-stream.com/45_gorgeous_fm_128_mp3",
-    "https://media-ssl.musicradio.com/Heart80s",
-    "https://blimp.streampunk.cc/_stream/blackout.mp3",
-    "https://icecast.xtvmedia.pp.ua/radiowandafm_hq.mp3",
-    "https://tunein-live-c.cdnstream1.com/4994_96_2.mp3",
-    "https://cdn1.zetcast.net/stream",
-    "https://rawlco.leanstream.co/CHUPFM",
-    "https://shonanbeachfm.out.airtime.pro:8000/shonanbeachfm_a",
-    "https://online.radioroks.ua/RadioROKS_Ukr",
-    "https://online.hitfm.ua/HitFM_Best",
-    "https://online.radiorelax.ua/RadioRelax_Cafe",
-    "https://s3.radio.co/sa3e464c40/listen",
-    "https://cast.brg.ua/business_main_public_mp3_hq"
+struct Station {
+  const char* name;
+  const char* url;
 };
 
-const int numStations = sizeof(radioStations) / sizeof(radioStations[0]);
+Station stationList[] = {
+    {"FIP Radio", "http://direct.fipradio.fr/live/fip-midfi.mp3"},
+    {"3FM BB", "http://icecast.omroep.nl:80/3fm-bb-mp3"},
+    {"BBC World Service", "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"},
+    {"Studio Brussel", "http://icecast.vrtcdn.be/stubru-high.mp3"},
+    {"RADIO BOB!", "http://streams.radiobob.de/bob-live/mp3-192"},
+    {"Radio ROKS", "http://online.radioroks.ua/RadioROKS"},
+    {"Asura Radio", "https://a9.asurahosting.com:7390/radio.mp3"},
+    {"Radio Relax", "http://online.radiorelax.ua/RadioRelax"},
+    {"Melodia FM", "http://online.melodiafm.ua/MelodiaFM"},
+    {"Walm Jazz", "https://icecast.walmradio.com:8443/jazz"},
+    {"Frank Sinatra", "https://stream02.pcradio.biz/frank_sinatra-med"},
+    {"Gorgeous FM", "https://listen-gorgeousfm.sharp-stream.com/45_gorgeous_fm_128_mp3"},
+    {"Heart 80s", "https://media-ssl.musicradio.com/Heart80s"},
+    {"Blackout", "https://blimp.streampunk.cc/_stream/blackout.mp3"},
+    {"Wanda FM", "https://icecast.xtvmedia.pp.ua/radiowandafm_hq.mp3"},
+    {"TuneIn Mix", "https://tunein-live-c.cdnstream1.com/4994_96_2.mp3"},
+    {"ZetCast", "https://cdn1.zetcast.net/stream"},
+    {"104.9 The Wolf", "https://rawlco.leanstream.co/CHUPFM"},
+    {"Shonan Beach FM", "https://shonanbeachfm.out.airtime.pro:8000/shonanbeachfm_a"},
+    {"ROKS Ukraine", "https://online.radioroks.ua/RadioROKS_Ukr"},
+    {"Hit FM Best", "https://online.hitfm.ua/HitFM_Best"},
+    {"Relax Cafe", "https://online.radiorelax.ua/RadioRelax_Cafe"},
+    {"Radio.co", "https://s3.radio.co/sa3e464c40/listen"},
+    {"Business Radio", "https://cast.brg.ua/business_main_public_mp3_hq"}
+};
+
+const int numStations = sizeof(stationList) / sizeof(stationList[0]);
+
 int currentStation = 0;
-int previewStation = 0;
+int previewStation = 0; 
 String currentTitle = ""; 
 
-int8_t toneLow = 5; 
+int8_t toneLow = 10; 
 int8_t toneMid = 0;  
 int8_t toneHigh = 0; 
 
@@ -71,7 +77,7 @@ int lastCLK = HIGH;
 
 unsigned long buttonDownTime = 0;
 bool buttonActive = false;
-const unsigned long LONG_PRESS_TIME = 800;
+const unsigned long LONG_PRESS_TIME = 800; 
 
 void IRAM_ATTR handleEncoder()
 {
@@ -146,26 +152,32 @@ void updateDisplay()
     }
 
     display.setCursor(0, 32);
-    
+    display.setTextSize(1);
+
     if (previewStation != currentStation) {
-        String nextStationUrl = cleanURL(String(radioStations[previewStation]));
+        String name = stationList[previewStation].name;
         
-        if (nextStationUrl.length() > 21) {
-             display.println(nextStationUrl.substring(0, 21));
-             display.println(nextStationUrl.substring(21));
+        if (name.length() > 21) {
+             display.println(name.substring(0, 21));
+             display.println(name.substring(21));
         } else {
-             display.println(nextStationUrl);
+             display.setTextSize(2);
+             display.setCursor(0, 35);
+             display.println(name);
         }
              
-        display.setCursor(20, 55);
         display.setTextSize(1);
-        display.print("[ PRESS ]");
+        display.setCursor(35, 55);
+        display.print("[PLAY]");
     } 
     else {
         String textToShow = currentTitle;
         
-        if (textToShow.length() == 0 || textToShow == "Ready") {
-           textToShow = cleanURL(String(radioStations[currentStation]));
+        if (textToShow.length() == 0 || textToShow == "Ready" || textToShow.indexOf("Connecting") >= 0) {
+           if(currentTitle == "Connecting...") 
+              textToShow = "Connecting...";
+           else 
+              textToShow = stationList[currentStation].name;
         }
 
         if (textToShow.length() > 42) {
@@ -194,13 +206,11 @@ void applyTone()
 
 void setup()
 {
-  Serial.begin(115200);
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(400000);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
   {
-    Serial.println(F("SSD1306 fail"));
     for (;;);
   }
   
@@ -230,9 +240,9 @@ void setup()
   audio.setConnectionTimeout(5000, 5000); 
 
   previewStation = currentStation;
-  currentTitle = cleanURL(String(radioStations[currentStation]));
+  currentTitle = stationList[currentStation].name;
   
-  audio.connecttohost(radioStations[currentStation]);
+  audio.connecttohost(stationList[currentStation].url);
   updateDisplay();
 }
 
@@ -263,7 +273,7 @@ void loop()
             currentStation = previewStation;
             currentTitle = "Connecting...";
             updateDisplay();
-            audio.connecttohost(radioStations[currentStation]);
+            audio.connecttohost(stationList[currentStation].url);
          }
       } 
       else {
@@ -291,7 +301,6 @@ void loop()
         previewStation += direction;
         if (previewStation < 0) previewStation = numStations - 1;
         if (previewStation >= numStations) previewStation = 0;
-        
         updateDisplay(); 
       }
       else if (currentMode == 1) 
@@ -321,7 +330,6 @@ void loop()
 }
 
 void audio_info(const char *info) {
-    Serial.print("info; "); Serial.println(info);
     String sInfo = String(info);
 
     if (sInfo.indexOf("404") >= 0) {
@@ -350,14 +358,13 @@ void audio_showstreamtitle(const char *info)
 
 void audio_showstation(const char *info) {
     String sInfo = String(info);
-    if (sInfo.length() > 0 && (currentTitle.indexOf("http") >= 0 || currentTitle.indexOf("Error") >= 0 || currentTitle.length() == 0)) {
-        currentTitle = sInfo;
+    if (sInfo.length() > 0 && (currentTitle.length() == 0 || currentTitle == "Ready" || currentTitle == stationList[currentStation].name)) {
+        currentTitle = sInfo; 
         if (currentMode == 0 && previewStation == currentStation) updateDisplay();
     }
 }
 
 void audio_error(const char *info) {
-    Serial.print("error; "); Serial.println(info);
     currentTitle = "Stream Error";
     if (currentMode == 0 && previewStation == currentStation) updateDisplay();
 }
