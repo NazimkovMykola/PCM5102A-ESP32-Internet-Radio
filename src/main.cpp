@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Preferences.h> 
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -11,6 +12,7 @@
 #define I2C_SCL 23
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Preferences preferences; // СТВОРЕННЯ ОБ'ЄКТА PREFERENCES
 
 const char *ssid = "Xiaomi_ANNA";
 const char *password = "23263483";
@@ -36,14 +38,14 @@ Station stationList[] = {
     {"Heart 80s", "https://media-ssl.musicradio.com/Heart80s"},
     {"Blackout", "https://blimp.streampunk.cc/_stream/blackout.mp3"},
     {"Wanda FM", "https://icecast.xtvmedia.pp.ua/radiowandafm_hq.mp3"},
-    {"TuneIn Mix", "https://tunein-live-c.cdnstream1.com/4994_96_2.mp3"},
+    {"GB News", "https://tunein-live-c.cdnstream1.com/4994_96_2.mp3"},
     {"ZetCast", "https://cdn1.zetcast.net/stream"},
     {"104.9 The Wolf", "https://rawlco.leanstream.co/CHUPFM"},
     {"Shonan Beach FM", "https://shonanbeachfm.out.airtime.pro:8000/shonanbeachfm_a"},
     {"ROKS Ukraine", "https://online.radioroks.ua/RadioROKS_Ukr"},
     {"Hit FM Best", "https://online.hitfm.ua/HitFM_Best"},
     {"Relax Cafe", "https://online.radiorelax.ua/RadioRelax_Cafe"},
-    {"Radio.co", "https://s3.radio.co/sa3e464c40/listen"},
+    {"Classic music", "https://s3.radio.co/sa3e464c40/listen"},
     {"Business Radio", "https://cast.brg.ua/business_main_public_mp3_hq"}
 };
 
@@ -53,8 +55,8 @@ int currentStation = 0;
 int previewStation = 0; 
 String currentTitle = ""; 
 
-int8_t toneLow = 10; 
-int8_t toneMid = 0;  
+int8_t toneLow = 0; 
+int8_t toneMid = 0; 
 int8_t toneHigh = 0; 
 
 int currentMode = 0;
@@ -78,6 +80,45 @@ int lastCLK = HIGH;
 unsigned long buttonDownTime = 0;
 bool buttonActive = false;
 const unsigned long LONG_PRESS_TIME = 800; 
+
+// --- НОВІ ФУНКЦІЇ ДЛЯ NVS ---
+
+// Збереження всіх налаштувань
+void saveSettings() {
+    preferences.begin("radio-cfg", false); // Відкриття "неймспейсу"
+    
+    // Збереження налаштувань звуку
+    preferences.putChar("bass", toneLow);
+    preferences.putChar("mid", toneMid);
+    preferences.putChar("treble", toneHigh);
+    
+    // Збереження індексу поточної станції
+    preferences.putInt("station_idx", currentStation);
+
+    preferences.end(); // Закриття
+}
+
+// Завантаження всіх налаштувань
+void loadSettings() {
+    preferences.begin("radio-cfg", true); // Відкриття лише для читання
+
+    // Завантаження налаштувань звуку
+    // Якщо значення немає, використовуємо значення за замовчуванням (те, що було встановлено в коді)
+    toneLow = preferences.getChar("bass", toneLow); 
+    toneMid = preferences.getChar("mid", toneMid);
+    toneHigh = preferences.getChar("treble", toneHigh);
+    
+    // Завантаження індексу станції
+    currentStation = preferences.getInt("station_idx", currentStation);
+    
+    // Перевірка на валідність індексу
+    if (currentStation < 0 || currentStation >= numStations) {
+        currentStation = 0;
+    }
+    
+    preferences.end();
+}
+// --- КІНЕЦЬ НОВИХ ФУНКЦІЙ ---
 
 void IRAM_ATTR handleEncoder()
 {
@@ -158,14 +199,14 @@ void updateDisplay()
         String name = stationList[previewStation].name;
         
         if (name.length() > 21) {
-             display.println(name.substring(0, 21));
-             display.println(name.substring(21));
+              display.println(name.substring(0, 21));
+              display.println(name.substring(21));
         } else {
-             display.setTextSize(2);
-             display.setCursor(0, 35);
-             display.println(name);
+              display.setTextSize(2);
+              display.setCursor(0, 35);
+              display.println(name);
         }
-             
+              
         display.setTextSize(1);
         display.setCursor(35, 55);
         display.print("[PLAY]");
@@ -184,10 +225,10 @@ void updateDisplay()
             display.println(textToShow.substring(0, 21));
             display.println(textToShow.substring(21, 42));
         } else if (textToShow.length() > 21) {
-             display.println(textToShow.substring(0, 21));
-             display.println(textToShow.substring(21));
+              display.println(textToShow.substring(0, 21));
+              display.println(textToShow.substring(21));
         } else {
-             display.println(textToShow);
+              display.println(textToShow);
         }
     }
   }
@@ -202,6 +243,7 @@ void applyTone()
 {
   audio.setTone(toneLow, toneMid, toneHigh);
   updateDisplay();
+  saveSettings(); // ДОДАНО: ЗБЕРІГАННЯ НОВИХ НАЛАШТУВАНЬ ЗВУКУ
 }
 
 void setup()
@@ -215,6 +257,9 @@ void setup()
   }
   
   showSplashScreen();
+  
+  // ДОДАНО: ЗАВАНТАЖЕННЯ НАЛАШТУВАНЬ ПЕРЕД ІНІЦІАЛІЗАЦІЄЮ
+  loadSettings(); 
 
   pinMode(ENCODER_CLK, INPUT_PULLUP);
   pinMode(ENCODER_DT, INPUT_PULLUP);
@@ -235,13 +280,15 @@ void setup()
   while (WiFi.status() != WL_CONNECTED) delay(500);
 
   audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-  audio.setVolume(12); 
-  audio.setTone(toneLow, toneMid, toneHigh);
+  audio.setVolume(12);  
+  // ВИКОРИСТАННЯ ЗАВАНТАЖЕНИХ НАЛАШТУВАНЬ ЗВУКУ
+  audio.setTone(toneLow, toneMid, toneHigh); 
   audio.setConnectionTimeout(5000, 5000); 
 
   previewStation = currentStation;
   currentTitle = stationList[currentStation].name;
   
+  // ПІДКЛЮЧЕННЯ ДО ОСТАННЬОЇ СТАНЦІЇ
   audio.connecttohost(stationList[currentStation].url);
   updateDisplay();
 }
@@ -269,18 +316,21 @@ void loop()
     } 
     else if (duration > 50) { 
       if (currentMode == 0) {
-         if (previewStation != currentStation) {
-            currentStation = previewStation;
-            currentTitle = "Connecting...";
-            updateDisplay();
-            audio.connecttohost(stationList[currentStation].url);
-         }
+           if (previewStation != currentStation) {
+             currentStation = previewStation;
+             // ДОДАНО: ЗБЕРЕЖЕННЯ НОВОЇ СТАНЦІЇ
+             saveSettings(); 
+             currentTitle = "Connecting...";
+             updateDisplay();
+             audio.connecttohost(stationList[currentStation].url);
+           }
       } 
       else {
-         currentMode++;
-         if (currentMode > 3) currentMode = 0;
-         if (currentMode == 0) previewStation = currentStation;
-         updateDisplay();
+          // КНОПКА ВИКОРИСТОВУЄТЬСЯ ДЛЯ ПЕРЕКЛЮЧЕННЯ РЕЖИМІВ TONE
+          currentMode++;
+          if (currentMode > 3) currentMode = 0;
+          if (currentMode == 0) previewStation = currentStation;
+          updateDisplay();
       }
     }
   }
@@ -308,7 +358,7 @@ void loop()
         toneLow += direction;
         if (toneLow > 6) toneLow = 6;
         if (toneLow < -10) toneLow = -10;
-        applyTone();
+        applyTone(); // applyTone тепер викликає saveSettings()
       }
       else if (currentMode == 2) 
       {
@@ -359,8 +409,8 @@ void audio_showstreamtitle(const char *info)
 void audio_showstation(const char *info) {
     String sInfo = String(info);
     if (sInfo.length() > 0 && (currentTitle.length() == 0 || currentTitle == "Ready" || currentTitle == stationList[currentStation].name)) {
-        currentTitle = sInfo; 
-        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
+      currentTitle = sInfo;  
+      if (currentMode == 0 && previewStation == currentStation) updateDisplay();
     }
 }
 
