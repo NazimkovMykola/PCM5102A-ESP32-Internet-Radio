@@ -12,7 +12,7 @@
 #define I2C_SCL 23
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-Preferences preferences; // СТВОРЕННЯ ОБ'ЄКТА PREFERENCES
+Preferences preferences; 
 
 const char *ssid = "Xiaomi_ANNA";
 const char *password = "23263483";
@@ -81,44 +81,29 @@ unsigned long buttonDownTime = 0;
 bool buttonActive = false;
 const unsigned long LONG_PRESS_TIME = 800; 
 
-// --- НОВІ ФУНКЦІЇ ДЛЯ NVS ---
-
-// Збереження всіх налаштувань
 void saveSettings() {
-    preferences.begin("radio-cfg", false); // Відкриття "неймспейсу"
-    
-    // Збереження налаштувань звуку
+    preferences.begin("radio-cfg", false);
     preferences.putChar("bass", toneLow);
     preferences.putChar("mid", toneMid);
     preferences.putChar("treble", toneHigh);
-    
-    // Збереження індексу поточної станції
     preferences.putInt("station_idx", currentStation);
-
-    preferences.end(); // Закриття
+    preferences.end();
 }
 
-// Завантаження всіх налаштувань
 void loadSettings() {
-    preferences.begin("radio-cfg", true); // Відкриття лише для читання
-
-    // Завантаження налаштувань звуку
-    // Якщо значення немає, використовуємо значення за замовчуванням (те, що було встановлено в коді)
+    preferences.begin("radio-cfg", true);
     toneLow = preferences.getChar("bass", toneLow); 
     toneMid = preferences.getChar("mid", toneMid);
-    toneHigh = preferences.getChar("treble", toneHigh);
-    
-    // Завантаження індексу станції
+    toneHigh = preferences.getChar("treble", toneHigh);    
     currentStation = preferences.getInt("station_idx", currentStation);
     
-    // Перевірка на валідність індексу
     if (currentStation < 0 || currentStation >= numStations) {
         currentStation = 0;
     }
     
     preferences.end();
 }
-// --- КІНЕЦЬ НОВИХ ФУНКЦІЙ ---
+
 
 void IRAM_ATTR handleEncoder()
 {
@@ -243,7 +228,7 @@ void applyTone()
 {
   audio.setTone(toneLow, toneMid, toneHigh);
   updateDisplay();
-  saveSettings(); // ДОДАНО: ЗБЕРІГАННЯ НОВИХ НАЛАШТУВАНЬ ЗВУКУ
+  saveSettings();
 }
 
 void setup()
@@ -257,8 +242,6 @@ void setup()
   }
   
   showSplashScreen();
-  
-  // ДОДАНО: ЗАВАНТАЖЕННЯ НАЛАШТУВАНЬ ПЕРЕД ІНІЦІАЛІЗАЦІЄЮ
   loadSettings(); 
 
   pinMode(ENCODER_CLK, INPUT_PULLUP);
@@ -281,14 +264,12 @@ void setup()
 
   audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
   audio.setVolume(12);  
-  // ВИКОРИСТАННЯ ЗАВАНТАЖЕНИХ НАЛАШТУВАНЬ ЗВУКУ
   audio.setTone(toneLow, toneMid, toneHigh); 
   audio.setConnectionTimeout(5000, 5000); 
 
   previewStation = currentStation;
   currentTitle = stationList[currentStation].name;
   
-  // ПІДКЛЮЧЕННЯ ДО ОСТАННЬОЇ СТАНЦІЇ
   audio.connecttohost(stationList[currentStation].url);
   updateDisplay();
 }
@@ -318,7 +299,6 @@ void loop()
       if (currentMode == 0) {
            if (previewStation != currentStation) {
              currentStation = previewStation;
-             // ДОДАНО: ЗБЕРЕЖЕННЯ НОВОЇ СТАНЦІЇ
              saveSettings(); 
              currentTitle = "Connecting...";
              updateDisplay();
@@ -326,7 +306,6 @@ void loop()
            }
       } 
       else {
-          // КНОПКА ВИКОРИСТОВУЄТЬСЯ ДЛЯ ПЕРЕКЛЮЧЕННЯ РЕЖИМІВ TONE
           currentMode++;
           if (currentMode > 3) currentMode = 0;
           if (currentMode == 0) previewStation = currentStation;
@@ -358,7 +337,7 @@ void loop()
         toneLow += direction;
         if (toneLow > 6) toneLow = 6;
         if (toneLow < -10) toneLow = -10;
-        applyTone(); // applyTone тепер викликає saveSettings()
+        applyTone();
       }
       else if (currentMode == 2) 
       {
