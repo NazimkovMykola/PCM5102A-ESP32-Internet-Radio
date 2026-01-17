@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "WiFi.h"
 #include "Audio.h"
 #include <Wire.h>
@@ -5,23 +6,27 @@
 #include <Adafruit_SSD1306.h>
 #include <Preferences.h> 
 
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRutils.h>
+
+const uint16_t kRecvPin = 33; 
+IRrecv irrecv(kRecvPin);
+decode_results results;
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET -1
 #define I2C_SDA 21
 #define I2C_SCL 23
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 Preferences preferences; 
+Audio audio;
 
-const char *ssid = "Xiaomi_ANNA";
-const char *password = "23263483";
+bool isMuted = false;
+int lastVolume = 12;
 
-struct Station {
-  const char* name;
-  const char* url;
-};
-
+struct Station { const char* name; const char* url; };
 Station stationList[] = {
     {"FIP Radio", "http://direct.fipradio.fr/live/fip-midfi.mp3"},
     {"3FM BB", "http://icecast.omroep.nl:80/3fm-bb-mp3"},
@@ -48,356 +53,97 @@ Station stationList[] = {
     {"Classic music", "https://s3.radio.co/sa3e464c40/listen"},
     {"Business Radio", "https://cast.brg.ua/business_main_public_mp3_hq"}
 };
-
 const int numStations = sizeof(stationList) / sizeof(stationList[0]);
 
 int currentStation = 0;
 int previewStation = 0; 
-String currentTitle = ""; 
+String currentTitle = "Ready";
 
-int8_t toneLow = 0; 
-int8_t toneMid = 0; 
-int8_t toneHigh = 0; 
-
-int currentMode = 0;
-const char *modeNames[] = {"STATION", "BASS (Low)", "MID TONE", "TREBLE (High)"};
-
-#define I2S_DOUT 22
-#define I2S_BCLK 26
-#define I2S_LRC 25
-
-#define ENCODER_CLK 12
-#define ENCODER_DT 14
-#define ENCODER_SW 27
-
-Audio audio;
-
-volatile int encoderPos = 0;
-volatile bool encoderChanged = false;
-int lastEncoderPos = 0;
-int lastCLK = HIGH;
-
-unsigned long buttonDownTime = 0;
-bool buttonActive = false;
-const unsigned long LONG_PRESS_TIME = 800; 
-
-void saveSettings() {
-    preferences.begin("radio-cfg", false);
-    preferences.putChar("bass", toneLow);
-    preferences.putChar("mid", toneMid);
-    preferences.putChar("treble", toneHigh);
-    preferences.putInt("station_idx", currentStation);
-    preferences.end();
-}
-
-void loadSettings() {
-    preferences.begin("radio-cfg", true);
-    toneLow = preferences.getChar("bass", toneLow); 
-    toneMid = preferences.getChar("mid", toneMid);
-    toneHigh = preferences.getChar("treble", toneHigh);    
-    currentStation = preferences.getInt("station_idx", currentStation);
-    
-    if (currentStation < 0 || currentStation >= numStations) {
-        currentStation = 0;
-    }
-    
-    preferences.end();
-}
-
-
-void IRAM_ATTR handleEncoder()
-{
-  int clkState = digitalRead(ENCODER_CLK);
-  int dtState = digitalRead(ENCODER_DT);
-
-  if (clkState != lastCLK && clkState == LOW)
-  {
-    if (dtState != clkState)
-      encoderPos++;
-    else
-      encoderPos--;
-    encoderChanged = true;
-  }
-  lastCLK = clkState;
-}
-
-void showSplashScreen() {
+void updateDisplay() {
   display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
+  display.setTextColor(WHITE);
   display.setTextSize(1);
-  display.setCursor(34, 4); 
-  display.print("Powered by");
-  display.drawLine(0, 15, 128, 15, SSD1306_WHITE); 
-  display.setTextSize(2);
-  display.setCursor(28, 35); 
-  display.print("Mykola");
-  display.display();
-  delay(2000); 
-}
-
-void drawBar(int value, int minVal, int maxVal)
-{
-  display.drawRect(10, 35, 108, 12, SSD1306_WHITE);
-  int width = map(value, minVal, maxVal, 0, 104);
-  if (width < 0) width = 0;
-  if (width > 104) width = 104;
-  display.fillRect(12, 37, width, 8, SSD1306_WHITE);
-  display.setCursor(55, 52);
-  display.print(value);
-  display.print(" dB");
-}
-
-String cleanURL(String url) {
-  url.replace("http://", "");
-  url.replace("https://", "");
-  url.replace("www.", "");
-  return url;
-}
-
-void updateDisplay()
-{
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-  display.setTextSize(1);
-  display.print("MODE: ");
-  display.print(modeNames[currentMode]);
-
-  display.drawLine(0, 14, 128, 14, SSD1306_WHITE);
   
-  if (currentMode == 0)
-  {
-    display.setCursor(0, 18);
-    display.print("Station ");
-    display.print(previewStation + 1);
-    display.print("/");
-    display.print(numStations);
-
-    if (previewStation != currentStation) {
-       display.print(" *"); 
-    }
-
-    display.setCursor(0, 32);
-    display.setTextSize(1);
-
-    if (previewStation != currentStation) {
-        String name = stationList[previewStation].name;
-        
-        if (name.length() > 21) {
-              display.println(name.substring(0, 21));
-              display.println(name.substring(21));
-        } else {
-              display.setTextSize(2);
-              display.setCursor(0, 35);
-              display.println(name);
-        }
-              
-        display.setTextSize(1);
-        display.setCursor(35, 55);
-        display.print("[PLAY]");
-    } 
-    else {
-        String textToShow = currentTitle;
-        
-        if (textToShow.length() == 0 || textToShow == "Ready" || textToShow.indexOf("Connecting") >= 0) {
-           if(currentTitle == "Connecting...") 
-              textToShow = "Connecting...";
-           else 
-              textToShow = stationList[currentStation].name;
-        }
-
-        if (textToShow.length() > 42) {
-            display.println(textToShow.substring(0, 21));
-            display.println(textToShow.substring(21, 42));
-        } else if (textToShow.length() > 21) {
-              display.println(textToShow.substring(0, 21));
-              display.println(textToShow.substring(21));
-        } else {
-              display.println(textToShow);
-        }
-    }
+  if (isMuted) {
+    display.print("ST: "); display.print(previewStation + 1);
+    display.setCursor(80, 0);
+    display.print("[MUTE]");
+  } else {
+    display.print("STATION: "); display.print(previewStation + 1);
+    display.print("/"); display.print(numStations);
   }
-  else if (currentMode == 1) drawBar(toneLow, -10, 6);
-  else if (currentMode == 2) drawBar(toneMid, -10, 6);
-  else if (currentMode == 3) drawBar(toneHigh, -10, 6);
 
+  display.drawLine(0, 12, 128, 12, WHITE);
+  display.setCursor(0, 20);
+  display.println(stationList[previewStation].name);
+  display.setCursor(0, 40);
+  display.println(currentTitle);
+  
   display.display();
 }
 
-void applyTone()
-{
-  audio.setTone(toneLow, toneMid, toneHigh);
-  updateDisplay();
-  saveSettings();
-}
-
-void setup()
-{
+void setup() {
+  Serial.begin(115200);
+  
   Wire.begin(I2C_SDA, I2C_SCL);
-  Wire.setClock(400000);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) for(;;);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
-  {
-    for (;;);
-  }
-  
-  showSplashScreen();
-  loadSettings(); 
+  irrecv.enableIRIn(); 
 
-  pinMode(ENCODER_CLK, INPUT_PULLUP);
-  pinMode(ENCODER_DT, INPUT_PULLUP);
-  pinMode(ENCODER_SW, INPUT_PULLUP);
-
-  lastCLK = digitalRead(ENCODER_CLK);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_CLK), handleEncoder, CHANGE);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.setTextSize(1);
-  display.println("Connecting WiFi...");
-  display.display();
-
+  WiFi.begin("Xiaomi_ANNA", "23263483");
   while (WiFi.status() != WL_CONNECTED) delay(500);
 
-  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-  audio.setVolume(12);  
-  audio.setTone(toneLow, toneMid, toneHigh); 
-  audio.setConnectionTimeout(5000, 5000); 
-
-  previewStation = currentStation;
-  currentTitle = stationList[currentStation].name;
-  
+  audio.setPinout(26, 25, 22);
+  audio.setVolume(lastVolume);
   audio.connecttohost(stationList[currentStation].url);
+  
   updateDisplay();
 }
 
-void loop()
-{
+void loop() {
   audio.loop();
 
-  int btnState = digitalRead(ENCODER_SW);
-
-  if (btnState == LOW && !buttonActive) {
-    buttonActive = true;
-    buttonDownTime = millis();
-  }
-
-  if (btnState == HIGH && buttonActive) {
-    buttonActive = false;
-    unsigned long duration = millis() - buttonDownTime;
-
-    if (duration > LONG_PRESS_TIME) {
-      currentMode++;
-      if (currentMode > 3) currentMode = 0;
-      if (currentMode == 0) previewStation = currentStation;
-      updateDisplay();
+  if (irrecv.decode(&results)) {
+    uint32_t code = (uint32_t)results.value;
+    
+    if (code == 0x11EECC33 || code == 0x11EEA857) { // Next
+       previewStation = (previewStation + 1) % numStations;
+       currentStation = previewStation;
+       audio.connecttohost(stationList[currentStation].url);
     } 
-    else if (duration > 50) { 
-      if (currentMode == 0) {
-           if (previewStation != currentStation) {
-             currentStation = previewStation;
-             saveSettings(); 
-             currentTitle = "Connecting...";
-             updateDisplay();
-             audio.connecttohost(stationList[currentStation].url);
-           }
-      } 
-      else {
-          currentMode++;
-          if (currentMode > 3) currentMode = 0;
-          if (currentMode == 0) previewStation = currentStation;
-          updateDisplay();
-      }
+    else if (code == 0x11EE2CD3 || code == 0x11EE6897) { // Prev
+       previewStation = (previewStation - 1 + numStations) % numStations;
+       currentStation = previewStation;
+       audio.connecttohost(stationList[currentStation].url);
     }
+    else if (code == 0x20EF906F) { 
+       isMuted = !isMuted;
+       if (isMuted) {
+         audio.setVolume(0);
+       } else {
+         audio.setVolume(lastVolume);
+       }
+    }
+
+    updateDisplay();
+    irrecv.resume(); 
   }
 
-  if (encoderChanged)
-  {
-    encoderChanged = false;
-    int diff = encoderPos - lastEncoderPos;
-    int absDiff = abs(diff);
-    int threshold = (currentMode == 0) ? 2 : 2; 
-
-    if (absDiff >= threshold)
-    {
-      int direction = (diff > 0) ? 1 : -1;
-
-      if (currentMode == 0)
-      {
-        previewStation += direction;
-        if (previewStation < 0) previewStation = numStations - 1;
-        if (previewStation >= numStations) previewStation = 0;
-        updateDisplay(); 
-      }
-      else if (currentMode == 1) 
-      {
-        toneLow += direction;
-        if (toneLow > 6) toneLow = 6;
-        if (toneLow < -10) toneLow = -10;
-        applyTone();
-      }
-      else if (currentMode == 2) 
-      {
-        toneMid += direction;
-        if (toneMid > 6) toneMid = 6;
-        if (toneMid < -10) toneMid = -10;
-        applyTone();
-      }
-      else if (currentMode == 3) 
-      {
-        toneHigh += direction;
-        if (toneHigh > 6) toneHigh = 6;
-        if (toneHigh < -10) toneHigh = -10;
-        applyTone();
-      }
-      lastEncoderPos = encoderPos;
-    }
+  static unsigned long lastUpdate = 0;
+  if (millis() - lastUpdate > 2000) {
+    lastUpdate = millis();
+    updateDisplay();
   }
 }
 
-void audio_info(const char *info) {
-    String sInfo = String(info);
-
-    if (sInfo.indexOf("404") >= 0) {
-        currentTitle = "Error: 404 Not Found";
-        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
-    }
-    else if (sInfo.indexOf("failed") >= 0 || sInfo.indexOf("refused") >= 0) {
-        currentTitle = "Connection Failed";
-        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
-    }
-    else if (sInfo.indexOf("format") >= 0 && sInfo.indexOf("error") >= 0) {
-        currentTitle = "Format Error";
-        if (currentMode == 0 && previewStation == currentStation) updateDisplay();
-    }
-}
-
-void audio_showstreamtitle(const char *info)
-{
-  String sInfo = String(info);
-  sInfo.trim();
-  if(sInfo.length() > 0) {
-    currentTitle = sInfo;
-    if (currentMode == 0 && previewStation == currentStation) updateDisplay();
+void audio_showstreamtitle(const char *i) { 
+  String s = String(i);
+  s.trim();
+  if (s.length() > 0) {
+    currentTitle = s;
+    updateDisplay(); 
   }
 }
-
-void audio_showstation(const char *info) {
-    String sInfo = String(info);
-    if (sInfo.length() > 0 && (currentTitle.length() == 0 || currentTitle == "Ready" || currentTitle == stationList[currentStation].name)) {
-      currentTitle = sInfo;  
-      if (currentMode == 0 && previewStation == currentStation) updateDisplay();
-    }
-}
-
-void audio_error(const char *info) {
-    currentTitle = "Stream Error";
-    if (currentMode == 0 && previewStation == currentStation) updateDisplay();
-}
-
-void audio_id3data(const char *info){}
-void audio_eof_mp3(const char *info){}
-void audio_bitrate(const char *info){}
+void audio_info(const char *i) {}
+void audio_error(const char *i) { currentTitle = "Stream Error"; updateDisplay(); }
