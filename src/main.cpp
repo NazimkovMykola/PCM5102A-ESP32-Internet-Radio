@@ -48,11 +48,30 @@ Station stationList[] = {
     {"3FM BB", "http://icecast.omroep.nl:80/3fm-bb-mp3"},
     {"BBC World Service", "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"},
     {"Studio Brussel", "http://icecast.vrtcdn.be/stubru-high.mp3"},
+    {"RADIO BOB!", "http://streams.radiobob.de/bob-live/mp3-192"},
     {"Radio ROKS", "http://online.radioroks.ua/RadioROKS"},
+    {"Asura Radio", "https://a9.asurahosting.com:7390/radio.mp3"},
     {"Radio Relax", "http://online.radiorelax.ua/RadioRelax"},
+    {"Melodia FM", "http://online.melodiafm.ua/MelodiaFM"},
+    {"Walm Jazz", "https://icecast.walmradio.com:8443/jazz"},
     {"Frank Sinatra", "https://stream02.pcradio.biz/frank_sinatra-med"},
+    {"Gorgeous FM", "https://listen-gorgeousfm.sharp-stream.com/45_gorgeous_fm_128_mp3"},
+    {"Heart 80s", "https://media-ssl.musicradio.com/Heart80s"},
+    {"Blackout", "https://blimp.streampunk.cc/_stream/blackout.mp3"},
+    {"Wanda FM", "https://icecast.xtvmedia.pp.ua/radiowandafm_hq.mp3"},
+    {"TuneIn Mix", "https://tunein-live-c.cdnstream1.com/4994_96_2.mp3"},
+    {"GB News", "https://tunein-live-c.cdnstream1.com/4994_96_2.mp3"},
+    {"ZetCast", "https://cdn1.zetcast.net/stream"},
+    {"104.9 The Wolf", "https://rawlco.leanstream.co/CHUPFM"},
+    {"Shonan Beach FM", "https://shonanbeachfm.out.airtime.pro:8000/shonanbeachfm_a"},
+    {"ROKS Ukraine", "https://online.radioroks.ua/RadioROKS_Ukr"},
+    {"Hit FM Best", "https://online.hitfm.ua/HitFM_Best"},
+    {"Relax Cafe", "https://online.radiorelax.ua/RadioRelax_Cafe"},
+    {"Radio.co", "https://s3.radio.co/sa3e464c40/listen"},
+    {"Classic music", "https://s3.radio.co/sa3e464c40/listen"},
     {"Business Radio", "https://cast.brg.ua/business_main_public_mp3_hq"}
 };
+
 const int numStations = sizeof(stationList) / sizeof(stationList[0]);
 
 int currentStation = 0;
