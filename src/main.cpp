@@ -10,14 +10,14 @@
 #include <IRrecv.h>
 #include <IRutils.h>
 
-const uint16_t kRecvPin = 33; 
+const uint16_t kRecvPin = 18; 
 IRrecv irrecv(kRecvPin);
 decode_results results;
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define I2C_SDA 21
-#define I2C_SCL 23
+#define I2C_SDA 1
+#define I2C_SCL 2
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 Preferences preferences; 
@@ -30,14 +30,17 @@ const char* modeNames[] = {"STATION", "BASS", "MIDDLE", "TREBLE"};
 bool isMuted = false;
 int lastVolume = 12;
 
-#define ENCODER_CLK 12
-#define ENCODER_DT 14
-#define ENCODER_SW 27
+#define ENCODER_CLK 41
+#define ENCODER_DT 42
+#define ENCODER_SW 40
 
+// --- НОВИЙ БЛОК ЕНКОДЕРА ---
 volatile int encoderPos = 0;
 volatile bool encoderChanged = false;
 int lastEncoderPos = 0;
-int lastCLK = HIGH;
+static uint8_t old_AB = 0;
+const int8_t encoder_states[] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+
 unsigned long buttonDownTime = 0;
 bool buttonActive = false;
 unsigned long lastInteraction = 0; 
@@ -86,14 +89,16 @@ void saveToneSettings() {
   preferences.end();
 }
 
+// --- НОВА ФУНКЦІЯ ОБРОБКИ ---
 void IRAM_ATTR handleEncoder() {
-  int clkState = digitalRead(ENCODER_CLK);
-  int dtState = digitalRead(ENCODER_DT);
-  if (clkState != lastCLK && clkState == LOW) {
-    if (dtState != clkState) encoderPos++; else encoderPos--;
+  old_AB <<= 2;
+  old_AB |= (digitalRead(ENCODER_CLK) << 1) | digitalRead(ENCODER_DT);
+  old_AB &= 0x0F;
+  int8_t change = encoder_states[old_AB];
+  if (change != 0) {
+    encoderPos += change;
     encoderChanged = true;
   }
-  lastCLK = clkState;
 }
 
 void updateDisplay() {
@@ -128,7 +133,7 @@ void updateDisplay() {
 }
 
 void setup() {
-  Wire.begin(21, 23);
+  Wire.begin(I2C_SDA, I2C_SCL, 100000);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) for(;;);
 
   irrecv.enableIRIn(); 
@@ -136,7 +141,10 @@ void setup() {
   pinMode(ENCODER_CLK, INPUT_PULLUP);
   pinMode(ENCODER_DT, INPUT_PULLUP);
   pinMode(ENCODER_SW, INPUT_PULLUP);
+  
+  // Переривання на обидва піни для точності
   attachInterrupt(digitalPinToInterrupt(ENCODER_CLK), handleEncoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_DT), handleEncoder, CHANGE);
 
   preferences.begin("radio-cfg", true);
   toneLow = preferences.getChar("bass", 0);
@@ -146,10 +154,12 @@ void setup() {
   preferences.end();
 
   WiFi.begin("Xiaomi_ANNA", "23263483");
+  WiFi.setSleep(false);
   while (WiFi.status() != WL_CONNECTED) delay(500);
 
-  audio.setPinout(26, 25, 22);
+  audio.setPinout(4, 5, 6);
   audio.setVolume(lastVolume);
+  audio.setBufsize(1500000, 500000);
   audio.setTone(toneLow, toneMid, toneHigh);
   
   previewStation = currentStation;
@@ -224,7 +234,8 @@ void loop() {
     encoderChanged = false;
     lastInteraction = millis();
     int diff = encoderPos - lastEncoderPos;
-    if (abs(diff) >= 2) {
+    // Один фізичний клік зазвичай видає 4 зміни стану
+    if (abs(diff) >= 4) {
       int dir = (diff > 0) ? 1 : -1;
       if (currentMode == 0) {
         previewStation = (previewStation + dir + numStations) % numStations;
