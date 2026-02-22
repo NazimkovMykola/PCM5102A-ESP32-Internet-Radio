@@ -44,6 +44,8 @@ const int8_t encoder_states[] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1
 unsigned long buttonDownTime = 0;
 bool buttonActive = false;
 unsigned long lastInteraction = 0; 
+unsigned long lastMetadataUpdate = 0;
+bool metadataReceived = false;
 
 struct Station { const char* name; const char* url; };
 Station stationList[] = {
@@ -78,10 +80,8 @@ Station stationList[] = {
     {"Hromadske", "https://hromadske.radio/radio_https_upstream"},
     {"Kultura", "https://radio.ukr.radio/ur3-mp3-m"},
     {"Radiotochka", "https://radio2.ukr.radio/ur5-mp3"},
-    {"ReLIFE", "https://resh.news/radio"},
-    {"Pryamyi", "https://cast.mediaonline.net.ua/prmfm320"},
-    {"Emanuil", "https://online.svitle.org/hls/svitle/aac_hifi.m3u8"}
-};
+    {"Pryamyi", "https://cast.mediaonline.net.ua/prmfm"}
+  };
 
 const int numStations = sizeof(stationList) / sizeof(stationList[0]);
 
@@ -126,7 +126,7 @@ void updateDisplay() {
     display.print("/"); display.println(numStations);
     display.setCursor(0, 32);
     display.println(stationList[previewStation].name);
-    display.setCursor(0, 50);
+    display.setCursor(0, 45);
     display.println(currentTitle);
   } else {
     int8_t val = (currentMode == 1) ? toneLow : (currentMode == 2) ? toneMid : toneHigh;
@@ -138,6 +138,17 @@ void updateDisplay() {
     display.fillRect(12, 57, barWidth, 2, WHITE);
   }
   display.display();
+}
+
+void changeStation(int index) {
+  audio.stopSong();
+  currentStation = index;
+  previewStation = index; 
+  currentTitle = "Connecting..."; 
+  metadataReceived = false;
+  lastMetadataUpdate = millis();
+  updateDisplay();
+  audio.connecttohost(stationList[index].url);
 }
 
 void setup() {
@@ -171,7 +182,7 @@ void setup() {
   audio.setTone(toneLow, toneMid, toneHigh);
   
   previewStation = currentStation;
-  audio.connecttohost(stationList[currentStation].url);
+  changeStation(currentStation);
   updateDisplay();
 }
 
@@ -189,7 +200,7 @@ void loop() {
        if (currentMode == 0) { 
          previewStation = (previewStation + 1) % numStations;
          currentStation = previewStation;
-         audio.connecttohost(stationList[currentStation].url);
+         changeStation(currentStation);
        } else {
          if (currentMode == 1) toneLow = constrain(toneLow + 1, -10, 6);
          else if (currentMode == 2) toneMid = constrain(toneMid + 1, -10, 6);
@@ -202,7 +213,7 @@ void loop() {
        if (currentMode == 0) { 
          previewStation = (previewStation - 1 + numStations) % numStations;
          currentStation = previewStation;
-         audio.connecttohost(stationList[currentStation].url);
+         changeStation(currentStation);
        } else {
          if (currentMode == 1) toneLow = constrain(toneLow - 1, -10, 6);
          else if (currentMode == 2) toneMid = constrain(toneMid - 1, -10, 6);
@@ -216,9 +227,10 @@ void loop() {
        audio.setVolume(isMuted ? 0 : lastVolume);
     }
     updateDisplay();
-    irrecv.resume(); 
-  }
+    irrecv.resume();
 
+  }
+  
   int btnState = digitalRead(ENCODER_SW);
   if (btnState == LOW && !buttonActive) {
     buttonActive = true;
@@ -232,7 +244,7 @@ void loop() {
     } else { 
        if (currentMode == 0) {
          currentStation = previewStation;
-         audio.connecttohost(stationList[currentStation].url);
+         changeStation(currentStation);
        }
     }
     updateDisplay();
@@ -258,7 +270,12 @@ void loop() {
       updateDisplay();
     }
   }
-
+  if (!metadataReceived && (millis() - lastMetadataUpdate > 10000)) {
+    if (currentTitle == "Connecting...") {
+      currentTitle = "No Metadata";
+      updateDisplay();
+    }
+  }
   if (currentMode != 0 && millis() - lastInteraction > 10000) {
     currentMode = 0;
     updateDisplay();
@@ -267,6 +284,10 @@ void loop() {
 
 void audio_showstreamtitle(const char *i) { 
   String s = String(i); s.trim();
-  if (s.length() > 0) { currentTitle = s; updateDisplay(); }
+  if (s.length() > 0) { 
+    currentTitle = s; 
+    metadataReceived = true;
+    updateDisplay();
+  }
 }
 void audio_error(const char *i) { currentTitle = "Stream Error"; updateDisplay(); }
