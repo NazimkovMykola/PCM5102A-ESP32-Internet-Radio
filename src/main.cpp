@@ -72,7 +72,15 @@ Station stationList[] = {
     {"Relax Cafe", "https://online.radiorelax.ua/RadioRelax_Cafe"},
     {"Radio.co", "https://s3.radio.co/sa3e464c40/listen"},
     {"Classic music", "https://s3.radio.co/sa3e464c40/listen"},
-    {"Business Radio", "https://cast.brg.ua/business_main_public_mp3_hq"}
+    {"Business Radio", "https://cast.brg.ua/business_main_public_mp3_hq"},
+    {"Radio NV", "https://online-radio.nv.ua/radionv.mp3"},
+    {"UKR Radio", "https://radio2.ukr.radio/ur1-mp3-m"},
+    {"Hromadske", "https://hromadske.radio/radio_https_upstream"},
+    {"Kultura", "https://radio.ukr.radio/ur3-mp3-m"},
+    {"Radiotochka", "https://radio2.ukr.radio/ur5-mp3"},
+    {"ReLIFE", "https://resh.news/radio"},
+    {"Pryamyi", "https://cast.mediaonline.net.ua/prmfm320"},
+    {"Emanuil", "https://online.svitle.org/hls/svitle/aac_hifi.m3u8"}
 };
 
 const int numStations = sizeof(stationList) / sizeof(stationList[0]);
