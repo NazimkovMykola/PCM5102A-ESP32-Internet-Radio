@@ -75,12 +75,11 @@ Station stationList[] = {
     {"Radio.co", "https://s3.radio.co/sa3e464c40/listen"},
     {"Classic music", "https://s3.radio.co/sa3e464c40/listen"},
     {"Business Radio", "https://cast.brg.ua/business_main_public_mp3_hq"},
-    {"Radio NV", "https://online-radio.nv.ua/radionv.mp3"},
+    {"Radio NV", "http://91.218.212.84:8000/radionv.mp3"},
     {"UKR Radio", "https://radio2.ukr.radio/ur1-mp3-m"},
     {"Hromadske", "https://hromadske.radio/radio_https_upstream"},
     {"Kultura", "https://radio.ukr.radio/ur3-mp3-m"},
-    {"Radiotochka", "https://radio2.ukr.radio/ur5-mp3"},
-    {"Pryamyi", "https://cast.mediaonline.net.ua/prmfm"}
+    {"Radiotochka", "https://radio2.ukr.radio/ur5-mp3"}
   };
 
 const int numStations = sizeof(stationList) / sizeof(stationList[0]);
@@ -170,6 +169,9 @@ void setup() {
   toneMid = preferences.getChar("mid", 0);
   toneHigh = preferences.getChar("treble", 0);
   currentStation = preferences.getInt("station_idx", 0);
+  if (currentStation >= numStations || currentStation < 0) {
+    currentStation = 0;
+  }
   preferences.end();
 
   WiFi.begin("Xiaomi_ANNA", "23263483");
@@ -272,7 +274,8 @@ void loop() {
   }
   if (!metadataReceived && (millis() - lastMetadataUpdate > 10000)) {
     if (currentTitle == "Connecting...") {
-      currentTitle = "No Metadata";
+      currentTitle = "No Metadata (Playing)";
+      metadataReceived = true;
       updateDisplay();
     }
   }
@@ -290,4 +293,10 @@ void audio_showstreamtitle(const char *i) {
     updateDisplay();
   }
 }
-void audio_error(const char *i) { currentTitle = "Stream Error"; updateDisplay(); }
+void audio_error(const char *i) {
+ audio.stopSong(); 
+  currentTitle = "Stream Error - Retrying...";
+  updateDisplay();
+  delay(2000);
+  audio.connecttohost(stationList[currentStation].url);
+}
